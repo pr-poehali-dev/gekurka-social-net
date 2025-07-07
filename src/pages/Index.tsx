@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,10 +11,126 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 import Icon from "@/components/ui/icon";
+
+interface User {
+  id: string;
+  email: string;
+  username: string;
+  avatar?: string;
+}
 
 const Index = () => {
   const [isRegistering, setIsRegistering] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [formData, setFormData] = useState({
+    email: "",
+    username: "",
+    password: "",
+  });
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    const savedUser = localStorage.getItem("gekurka_user");
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+  };
+
+  const validateForm = () => {
+    if (!formData.email || !formData.password) {
+      toast.error("Email и пароль обязательны");
+      return false;
+    }
+    if (isRegistering && !formData.username) {
+      toast.error("Имя пользователя обязательно");
+      return false;
+    }
+    if (formData.password.length < 6) {
+      toast.error("Пароль должен содержать минимум 6 символов");
+      return false;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(formData.email)) {
+      toast.error("Введите корректный email");
+      return false;
+    }
+    return true;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    setIsLoading(true);
+
+    try {
+      if (isRegistering) {
+        // Проверяем, не существует ли уже пользователь
+        const existingUsers = JSON.parse(
+          localStorage.getItem("gekurka_users") || "[]",
+        );
+        if (existingUsers.find((u: User) => u.email === formData.email)) {
+          toast.error("Пользователь с таким email уже существует");
+          setIsLoading(false);
+          return;
+        }
+
+        // Создаем нового пользователя
+        const newUser: User = {
+          id: Date.now().toString(),
+          email: formData.email,
+          username: formData.username,
+          avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.username}`,
+        };
+
+        const users = [...existingUsers, newUser];
+        localStorage.setItem("gekurka_users", JSON.stringify(users));
+        localStorage.setItem("gekurka_user", JSON.stringify(newUser));
+
+        setUser(newUser);
+        toast.success(`Добро пожаловать в GEKURKA, ${newUser.username}!`);
+      } else {
+        // Вход существующего пользователя
+        const existingUsers = JSON.parse(
+          localStorage.getItem("gekurka_users") || "[]",
+        );
+        const foundUser = existingUsers.find(
+          (u: User) => u.email === formData.email,
+        );
+
+        if (!foundUser) {
+          toast.error("Пользователь не найден");
+          setIsLoading(false);
+          return;
+        }
+
+        localStorage.setItem("gekurka_user", JSON.stringify(foundUser));
+        setUser(foundUser);
+        toast.success(`С возвращением, ${foundUser.username}!`);
+      }
+
+      setFormData({ email: "", username: "", password: "" });
+    } catch (error) {
+      toast.error("Произошла ошибка при авторизации");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("gekurka_user");
+    setUser(null);
+    toast.success("Вы вышли из аккаунта");
+  };
 
   return (
     <div className="min-h-screen bg-[#36393F] text-white font-['Source_Sans_Pro']">
@@ -46,12 +162,32 @@ const Index = () => {
             >
               Скачать
             </a>
-            <Button
-              onClick={() => setIsRegistering(!isRegistering)}
-              className="bg-[#5865F2] hover:bg-[#4752C4] text-white"
-            >
-              {isRegistering ? "Войти" : "Регистрация"}
-            </Button>
+            {user ? (
+              <div className="flex items-center space-x-3">
+                <Avatar className="w-8 h-8">
+                  <AvatarImage src={user.avatar} alt={user.username} />
+                  <AvatarFallback className="bg-[#5865F2] text-white">
+                    {user.username.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm">{user.username}</span>
+                <Button
+                  onClick={handleLogout}
+                  variant="outline"
+                  size="sm"
+                  className="border-[#5865F2] text-[#5865F2] hover:bg-[#5865F2] hover:text-white"
+                >
+                  Выйти
+                </Button>
+              </div>
+            ) : (
+              <Button
+                onClick={() => setIsRegistering(!isRegistering)}
+                className="bg-[#5865F2] hover:bg-[#4752C4] text-white"
+              >
+                {isRegistering ? "Войти" : "Регистрация"}
+              </Button>
+            )}
           </nav>
         </div>
       </header>
@@ -343,63 +479,174 @@ const Index = () => {
       </section>
 
       {/* Registration Form */}
-      <section className="py-16 px-6 bg-[#2F3136]">
-        <div className="max-w-md mx-auto">
-          <Card className="bg-[#36393F] border-[#40444B] text-white">
-            <CardHeader className="text-center">
-              <CardTitle className="text-2xl">
-                {isRegistering ? "Регистрация" : "Вход"}
-              </CardTitle>
-              <CardDescription className="text-gray-400">
-                {isRegistering
-                  ? "Создай аккаунт в GEKURKA"
-                  : "Войди в свой аккаунт"}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Email</label>
-                <Input
-                  type="email"
-                  placeholder="твой@email.com"
-                  className="bg-[#40444B] border-[#40444B] text-white placeholder-gray-400"
-                />
-              </div>
-              {isRegistering && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">
-                    Имя пользователя
-                  </label>
-                  <Input
-                    placeholder="Твой никнейм"
-                    className="bg-[#40444B] border-[#40444B] text-white placeholder-gray-400"
-                  />
+      {!user && (
+        <section className="py-16 px-6 bg-[#2F3136]">
+          <div className="max-w-md mx-auto">
+            <Card className="bg-[#36393F] border-[#40444B] text-white">
+              <CardHeader className="text-center">
+                <CardTitle className="text-2xl">
+                  {isRegistering ? "Регистрация" : "Вход"}
+                </CardTitle>
+                <CardDescription className="text-gray-400">
+                  {isRegistering
+                    ? "Создай аккаунт в GEKURKA"
+                    : "Войди в свой аккаунт"}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Email</label>
+                    <Input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      placeholder="твой@email.com"
+                      className="bg-[#40444B] border-[#40444B] text-white placeholder-gray-400"
+                      required
+                    />
+                  </div>
+                  {isRegistering && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">
+                        Имя пользователя
+                      </label>
+                      <Input
+                        name="username"
+                        value={formData.username}
+                        onChange={handleInputChange}
+                        placeholder="Твой никнейм"
+                        className="bg-[#40444B] border-[#40444B] text-white placeholder-gray-400"
+                        required
+                      />
+                    </div>
+                  )}
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Пароль</label>
+                    <Input
+                      type="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleInputChange}
+                      placeholder="Пароль"
+                      className="bg-[#40444B] border-[#40444B] text-white placeholder-gray-400"
+                      required
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white"
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Загрузка...</span>
+                      </div>
+                    ) : isRegistering ? (
+                      "Создать аккаунт"
+                    ) : (
+                      "Войти"
+                    )}
+                  </Button>
+                  <p className="text-center text-sm text-gray-400">
+                    {isRegistering ? "Уже есть аккаунт?" : "Нет аккаунта?"}
+                    <button
+                      type="button"
+                      onClick={() => setIsRegistering(!isRegistering)}
+                      className="text-[#5865F2] hover:underline ml-1"
+                    >
+                      {isRegistering ? "Войти" : "Зарегистрироваться"}
+                    </button>
+                  </p>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
+
+      {/* User Dashboard */}
+      {user && (
+        <section className="py-16 px-6 bg-[#2F3136]">
+          <div className="max-w-4xl mx-auto">
+            <Card className="bg-[#36393F] border-[#40444B] text-white">
+              <CardHeader className="text-center">
+                <Avatar className="w-20 h-20 mx-auto mb-4">
+                  <AvatarImage src={user.avatar} alt={user.username} />
+                  <AvatarFallback className="bg-[#5865F2] text-white text-2xl">
+                    {user.username.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <CardTitle className="text-2xl">
+                  Добро пожаловать, {user.username}!
+                </CardTitle>
+                <CardDescription className="text-gray-400">
+                  Твой профиль в GEKURKA готов к использованию
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid md:grid-cols-2 gap-6">
+                  <Card className="bg-[#2F3136] border-[#40444B] text-white">
+                    <CardHeader>
+                      <CardTitle className="flex items-center">
+                        <Icon name="MessageCircle" className="mr-2" size={20} />
+                        Мои чаты
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-400 mb-4">
+                        Подключайся к серверам и общайся с друзьями
+                      </p>
+                      <Button className="bg-[#5865F2] hover:bg-[#4752C4] text-white">
+                        <Icon name="Plus" className="mr-2" size={16} />
+                        Найти сервер
+                      </Button>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="bg-[#2F3136] border-[#40444B] text-white">
+                    <CardHeader>
+                      <CardTitle className="flex items-center">
+                        <Icon name="Radio" className="mr-2" size={20} />
+                        Стриминг
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-gray-400 mb-4">
+                        Начни свою первую трансляцию
+                      </p>
+                      <Button className="bg-[#57F287] hover:bg-[#3BA55C] text-white">
+                        <Icon name="Play" className="mr-2" size={16} />
+                        Начать стрим
+                      </Button>
+                    </CardContent>
+                  </Card>
                 </div>
-              )}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Пароль</label>
-                <Input
-                  type="password"
-                  placeholder="Пароль"
-                  className="bg-[#40444B] border-[#40444B] text-white placeholder-gray-400"
-                />
-              </div>
-              <Button className="w-full bg-[#5865F2] hover:bg-[#4752C4] text-white">
-                {isRegistering ? "Создать аккаунт" : "Войти"}
-              </Button>
-              <p className="text-center text-sm text-gray-400">
-                {isRegistering ? "Уже есть аккаунт?" : "Нет аккаунта?"}
-                <button
-                  onClick={() => setIsRegistering(!isRegistering)}
-                  className="text-[#5865F2] hover:underline ml-1"
-                >
-                  {isRegistering ? "Войти" : "Зарегистрироваться"}
-                </button>
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-      </section>
+
+                <div className="mt-6 p-4 bg-[#2F3136] rounded-lg">
+                  <h4 className="font-semibold mb-2">Информация профиля:</h4>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Email:</span>
+                      <span>{user.email}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Имя пользователя:</span>
+                      <span>{user.username}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">ID:</span>
+                      <span className="font-mono text-xs">{user.id}</span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </section>
+      )}
 
       {/* Footer */}
       <footer className="bg-[#23272A] py-8 px-6">
